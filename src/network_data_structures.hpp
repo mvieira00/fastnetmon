@@ -1211,36 +1211,36 @@ struct __attribute__((packed)) scion_path_meta_hdr_t {
     uint32_t FirstLine;
 
     uint32_t get_raw_host_byte_order() const {
-        return ntohl(FirstLine);
+        return fast_ntoh(FirstLine);
     }
 
     // CurrINF: bits 31-30 (2 bits)
     uint8_t get_curr_inf() const {
-        return (ntohl(FirstLine) >> 30) & 0x03;
+        return (fast_ntoh(FirstLine) >> 30) & 0x03;
     }
 
     // CurrHF: bits 29-24 (6 bits)
     uint8_t get_curr_hf() const {
-        return (ntohl(FirstLine) >> 24) & 0x3F;
+        return (fast_ntoh(FirstLine) >> 24) & 0x3F;
     }
     // RSV: bits 23-18 (6 bits)
     uint8_t get_rsv() const {
-        return (ntohl(FirstLine) >> 18) & 0x3F;
+        return (fast_ntoh(FirstLine) >> 18) & 0x3F;
     }
 
     // Seg0Len: bits 17-12 (6 bits)
     uint8_t get_seg0_len() const {
-        return (ntohl(FirstLine) >> 12) & 0x3F;
+        return (fast_ntoh(FirstLine) >> 12) & 0x3F;
     }
 
     // Seg1Len: bits 11-6 (6 bits)
     uint8_t get_seg1_len() const {
-        return (ntohl(FirstLine) >> 6) & 0x3F;
+        return (fast_ntoh(FirstLine) >> 6) & 0x3F;
     }
 
     // Seg2Len: bits 5-0 (6 bits)
     uint8_t get_seg2_len() const {
-        return ntohl(FirstLine) & 0x3F;
+        return fast_ntoh(FirstLine) & 0x3F;
     }
 
     uint8_t get_num_info_fields() const{
@@ -1289,11 +1289,11 @@ struct __attribute__((packed)) scion_info_field_t {
     }
 
     uint16_t get_seg_id_host_byte_order() const {
-        return ntohs(SegID);
+        return fast_ntoh(SegID);
     }
 
     uint32_t get_timestamp_host_byte_order() const {
-        return ntohl(timestamp);
+        return fast_ntoh(timestamp);
     }
 };
 
@@ -1326,11 +1326,11 @@ struct __attribute__((packed)) scion_hop_field_t {
     }
 
     uint16_t get_ConsIngress_host_byte_order() const {
-        return ntohs(ConsIngress);
+        return fast_ntoh(ConsIngress);
     }
 
     uint16_t get_ConsEgress_host_byte_order() const {
-        return ntohs(ConsEgress);
+        return fast_ntoh(ConsEgress);
     }
 
     uint8_t get_ExpTime() const {
@@ -1362,15 +1362,15 @@ struct __attribute__((packed)) scion_common_header_t {
     uint16_t RSV;
 
     uint8_t get_version() const {
-        return (ntohl(firstLine) >> 28) & 0x0F;
+        return (fast_ntoh(firstLine) >> 28) & 0x0F;
     }
 
     uint8_t get_traffic_class() const {
-        return (ntohl(firstLine) >> 20) & 0xFF;
+        return (fast_ntoh(firstLine) >> 20) & 0xFF;
     }
 
     uint32_t get_flow_id() const {
-        return ntohl(firstLine) & 0x000FFFFF;
+        return fast_ntoh(firstLine) & 0x000FFFFF;
     }
 
     uint8_t get_next_header() const {
@@ -1382,7 +1382,7 @@ struct __attribute__((packed)) scion_common_header_t {
     }
 
     uint16_t get_payload_length_host_byte_order() const {
-        return ntohs(PayLoadLen);
+        return fast_ntoh(PayLoadLen);
     }
 
     uint8_t get_path_type() const {

@@ -47,7 +47,8 @@ parser_code_t parse_scion_packet(const uint8_t* local_pointer, const uint8_t* en
 
     // From the Documentation: "The version of the SCION Header. Currently, only 0 is supported.""
     // In case we do not have version 0 SCION packet we just return (could be also treated as a memory violation tbh?)
-    if(scion_hdr->get_version() != 0){
+    packet.scion_version = scion_hdr->get_version();
+    if(packet.scion_version != 0){
         return parser_code_t::success;
     }
 
@@ -144,11 +145,11 @@ parser_code_t parse_scion_packet(const uint8_t* local_pointer, const uint8_t* en
             return parser_code_t::memory_violation;
         }
         const scion_info_field_t* scion_info = (const scion_info_field_t*) local_pointer;
-
-        packet.scion_info_fields[i].timestamp = scion_info->get_timestamp_host_byte_order();
-        packet.scion_info_fields[i].SegID = scion_info->get_seg_id_host_byte_order();
+        
         packet.scion_info_fields[i].peering = scion_info->get_peering();
         packet.scion_info_fields[i].ConstructionDir = scion_info->get_construction_dir();
+        packet.scion_info_fields[i].SegID = scion_info->get_seg_id_host_byte_order();
+        packet.scion_info_fields[i].timestamp = scion_info->get_timestamp_host_byte_order();
 
         local_pointer += info_field_size;
     }

@@ -138,6 +138,7 @@ class simple_packet_t {
     
     // is this packet a scion packet
     bool is_scion = false;
+    uint8_t scion_version = 0;
     uint32_t scion_flow_id = 0;
     // Fow now NextHdr should be checked for value 17 (SCION over UDP header)
     uint8_t scion_next_hdr = 0;
