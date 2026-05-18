@@ -1195,6 +1195,274 @@ class __attribute__((__packed__)) ipv4_header_t {
 
 static_assert(sizeof(ipv4_header_t) == 20, "Bad size for ipv4_header_t");
 
+//////////////////////////////////////
+// SCION HEADER LOGIC ////////////////
+//////////////////////////////////////
+
+// PathMetaHeader
+/*
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| C |  CurrHF   |    RSV    |  Seg0Len  |  Seg1Len  |  Seg2Len  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+struct __attribute__((packed)) scion_path_meta_hdr_t {
+    uint32_t FirstLine;
+
+    uint32_t get_raw_host_byte_order() const {
+        return ntohl(FirstLine);
+    }
+
+    // CurrINF: bits 31-30 (2 bits)
+    uint8_t get_curr_inf() const {
+        return (ntohl(FirstLine) >> 30) & 0x03;
+    }
+
+    // CurrHF: bits 29-24 (6 bits)
+    uint8_t get_curr_hf() const {
+        return (ntohl(FirstLine) >> 24) & 0x3F;
+    }
+    // RSV: bits 23-18 (6 bits)
+    uint8_t get_rsv() const {
+        return (ntohl(FirstLine) >> 18) & 0x3F;
+    }
+
+    // Seg0Len: bits 17-12 (6 bits)
+    uint8_t get_seg0_len() const {
+        return (ntohl(FirstLine) >> 12) & 0x3F;
+    }
+
+    // Seg1Len: bits 11-6 (6 bits)
+    uint8_t get_seg1_len() const {
+        return (ntohl(FirstLine) >> 6) & 0x3F;
+    }
+
+    // Seg2Len: bits 5-0 (6 bits)
+    uint8_t get_seg2_len() const {
+        return ntohl(FirstLine) & 0x3F;
+    }
+
+    uint8_t get_num_info_fields() const{
+        uint8_t num_info_fields = 0;
+        if(get_seg0_len() > 0){
+            num_info_fields += 1;
+        }
+        if(get_seg1_len() > 0){
+            num_info_fields += 1;
+        }
+        if(get_seg2_len() > 0){
+            num_info_fields += 1;
+        }
+        return num_info_fields;
+    }
+
+    uint8_t get_num_hop_fields() const {
+        return get_seg0_len() + get_seg1_len() + get_seg2_len();
+    }
+};
+
+
+// InfoField
+// 0                   1                   2                   3
+// 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |r r r r r r P C|      RSV      |             SegID             |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                           Timestamp                           |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+struct __attribute__((packed)) scion_info_field_t {
+    uint8_t flags; // contains r r r r r r P C 
+    uint8_t rsv;
+    uint16_t SegID;
+    uint32_t timestamp;
+
+    // second bit from right P
+    bool get_peering() const {
+        return (flags >> 1) & 0x01;
+    }
+
+    // rightmost bit C
+    bool get_construction_dir() const {
+        return flags & 0x01;
+    }
+
+    uint16_t get_seg_id_host_byte_order() const {
+        return ntohs(SegID);
+    }
+
+    uint32_t get_timestamp_host_byte_order() const {
+        return ntohl(timestamp);
+    }
+};
+
+// HopField
+// 0                   1                   2                   3
+// 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |r r r r r r I E|    ExpTime    |           ConsIngress         |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |        ConsEgress             |                               |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+// |                              MAC                              |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+struct __attribute__((packed)) scion_hop_field_t {
+    uint8_t flags; // contains r r r r r r I E 
+    uint8_t ExpTime;
+    uint16_t ConsIngress;
+    uint16_t ConsEgress;
+    uint8_t MAC[6];
+
+
+    // second bit from right I (ConsIngress Router Alert)
+    bool get_I() const {
+        return (flags >> 1) & 0x01;
+    }
+
+    // rightmost bit E (ConsEgress Router Alert)
+    bool get_E() const {
+        return flags & 0x01;
+    }
+
+    uint16_t get_ConsIngress_host_byte_order() const {
+        return ntohs(ConsIngress);
+    }
+
+    uint16_t get_ConsEgress_host_byte_order() const {
+        return ntohs(ConsEgress);
+    }
+
+    uint8_t get_ExpTime() const {
+        return ExpTime;
+    }
+
+};
+
+// SCION COMMON HEADER
+/* 
+0                   1                   2                   3 
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|Version| TrafficClass  |                FlowID                 |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|    NextHdr    |    HdrLen     |          PayloadLen           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|    PathType   |DT |DL |ST |SL |              RSV              |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+
+struct __attribute__((packed)) scion_common_header_t {
+    uint32_t firstLine; // Version | TrafficClass | FlowID
+    uint8_t NextHdr;
+    uint8_t HdrLen;
+    uint16_t PayLoadLen;
+    uint8_t PathType;
+    uint8_t DT_DL_ST_SL;
+    uint16_t RSV;
+
+    uint8_t get_version() const {
+        return (ntohl(firstLine) >> 28) & 0x0F;
+    }
+
+    uint8_t get_traffic_class() const {
+        return (ntohl(firstLine) >> 20) & 0xFF;
+    }
+
+    uint32_t get_flow_id() const {
+        return ntohl(firstLine) & 0x000FFFFF;
+    }
+
+    uint8_t get_next_header() const {
+        return NextHdr;
+    }
+
+    uint16_t get_header_length_bytes() const {
+        return HdrLen * 4;
+    }
+
+    uint16_t get_payload_length_host_byte_order() const {
+        return ntohs(PayLoadLen);
+    }
+
+    uint8_t get_path_type() const {
+        return PathType;
+    }
+
+    // This part is similar to the scion go implementation: https://github.com/scionproto/scion/blob/master/pkg/slayers/scion.go
+    // Go: AddrType(data[9] >> 4 & 0xF)
+    uint8_t get_dst_addr_type() const {
+        return (DT_DL_ST_SL >> 4) & 0x0F;
+    }
+
+    // Go: AddrType(data[9] & 0xF)
+    uint8_t get_src_addr_type() const {
+        return DT_DL_ST_SL & 0x0F;
+    }
+
+    // Go: LineLen * (1 + (int(tl) & 0x3))
+    // i.e. encoded length value maps to: 0->4, 1->8, 2->12, 3->16 bytes
+    uint8_t get_dst_addr_length_bytes() const {
+        return 4 * (1 + (get_dst_addr_type() & 0x03));
+    }
+
+    uint8_t get_src_addr_length_bytes() const {
+        return 4 * (1 + (get_src_addr_type() & 0x03));
+    }
+
+    // Go: 2*addr.IABytes + DstAddrType.Length() + SrcAddrType.Length()
+    // addr.IABytes = 8
+    uint8_t get_addr_header_length_bytes() const {
+        return 2 * 8 + get_dst_addr_length_bytes() + get_src_addr_length_bytes();
+    }
+    
+};
+
+// SCION ADDRESS HEADER
+/*
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|            DstISD             |                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+|                             DstAS                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|            SrcISD             |                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+|                             SrcAS                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                    DstHostAddr (variable Len)                 |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                    SrcHostAddr (variable Len)                 |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+// Includes DstISD + DstAS and SrcISD + SrcAS
+// DstHostAddr and SrcHostAddr will be handled separately since they vary in size (based on the DT/DL/ST/SL flags in the common header)
+struct __attribute__((packed)) scion_address_header_t {
+    uint64_t DstISD_DstAS;
+    uint64_t SrcISD_SrcAS;
+
+
+    uint16_t get_DstISD() const {
+        return (be64toh(DstISD_DstAS) >> 48) & 0xFFFF;
+    }
+
+    uint64_t get_DstAS() const {
+        return be64toh(DstISD_DstAS) & 0x0000FFFFFFFFFFFF;
+    }
+
+    uint16_t get_SrcISD() const {
+        return (be64toh(SrcISD_SrcAS) >> 48) & 0xFFFF;
+    }
+
+    uint64_t get_ScrAS() const {
+        return be64toh(SrcISD_SrcAS) & 0x0000FFFFFFFFFFFF;
+    }
+
+};
+
+
+
 enum class parser_code_t {
     memory_violation,
     not_ipv4,
@@ -1204,8 +1472,12 @@ enum class parser_code_t {
     no_ipv6_options_support,
     unknown_ethertype,
     arp,
-    too_many_nested_vlans,
+    too_many_nested_vlans
 };
+
+
+
+
 
 std::string parser_code_to_string(parser_code_t code);
 } // namespace network_data_stuctures

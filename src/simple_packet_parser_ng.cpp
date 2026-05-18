@@ -24,6 +24,162 @@ const uint16_t gtp_port = 2152;
 // This is the type for packet which carries traffic
 const uint8_t gtp_v1_t_pdu_type = 255;
 
+
+///////////////////
+// SCION PARSER //
+//////////////////
+
+parser_code_t parse_scion_packet(const uint8_t* local_pointer, const uint8_t* end_pointer, simple_packet_t& packet, const parser_options_t& parser_options) {
+    
+    // We point to the start of the scion header
+    const uint8_t* scion_start = local_pointer;
+
+    // Step 1: SCION Common Header
+
+    // Return error if the end_pointer is shorter then SCION Common Header
+    if (local_pointer + sizeof(scion_common_header_t) > end_pointer) {
+        return parser_code_t::memory_violation;
+    }
+
+    const scion_common_header_t* scion_hdr = (const scion_common_header_t*) local_pointer;
+
+    // From the Documentation: "The version of the SCION Header. Currently, only 0 is supported.""
+    // In case we do not have version 0 SCION packet we just return (could be also treated as a memory violation tbh?)
+    if(scion_hdr->get_version() != 0){
+        return parser_code_t::success;
+    }
+
+    // we mark the packet as a SCION packet (potentially usefull later) and we save the PathType inside the packet
+    packet.is_scion = true;
+    packet.scion_flow_id = scion_hdr->get_flow_id();
+
+    // We check if the NextHdr is 17 resp. SCION over UDP (if not we create a debug message)
+    packet.scion_next_hdr = scion_hdr->get_next_header();
+    if(packet.scion_next_hdr != 17){
+        std::cerr << "DEBUG: NextHdr is not 17 but " << +packet.scion_next_hdr << std::endl;
+    }
+
+
+    packet.scion_path_type = scion_hdr->get_path_type();
+
+    // Advance the pointer past the SCION Common Header
+    local_pointer += sizeof(scion_common_header_t);
+
+    // Step 2: SCION Address Header
+
+    // Return error if the end_pointer is shorter then SCION Address Header
+    if (local_pointer + sizeof(scion_address_header_t) > end_pointer) {
+        return parser_code_t::memory_violation;
+    }
+
+    const scion_address_header_t* scion_addr_hdr = (const scion_address_header_t*) local_pointer;
+
+    // We retrieve the source/destination Addresses for the respective ISD and ASes
+    packet.scion_src_as = scion_addr_hdr->get_ScrAS();
+    packet.scion_src_isd = scion_addr_hdr->get_SrcISD();
+    packet.scion_dst_as = scion_addr_hdr->get_DstAS();
+    packet.scion_dst_isd = scion_addr_hdr->get_DstISD();
+
+    // We advance the local_pointer by the size of our specifically defined SCION Address Header 
+    // IMPORTANT NOTE: (we leave the DstHostAddr and SrcHostAddr since they are varaible in length)
+    local_pointer += sizeof(scion_address_header_t);
+
+
+    // Step 3: We capture the Variable Length DstHostAddr and SrcHostAddr separately (technically part of the SCION Address Header)
+
+    // We first get the respective lengths of the DstHostAddr and SrcHostAddr baed on the DL/SL values from the SCION Common Header
+    uint8_t dl = scion_hdr->get_dst_addr_length_bytes();
+    uint8_t sl = scion_hdr->get_src_addr_length_bytes();
+
+    // Return error if the end_pointer is shorter then dl and sl
+    if (local_pointer + dl + sl > end_pointer) {
+        return parser_code_t::memory_violation;
+    }
+
+    // parse the DstHostAddr based on the value of dl
+    if (dl == 4) {
+        memcpy(&packet.scion_dst_host_adr_ipv4, local_pointer, 4);
+    } else if (dl == 16) {
+        memcpy(&packet.scion_dst_host_adr_ipv6.s6_addr, local_pointer, 16);
+    }
+
+    // We advance the local_pointer by dl
+    local_pointer += dl;
+
+    // parse the SrcHostAddr based on the value of sl
+    if(sl == 4){
+        memcpy(&packet.scion_src_host_adr_ipv4, local_pointer, 4);
+    }
+    else if(sl == 16){
+        memcpy(&packet.scion_src_host_adr_ipv6.s6_addr, local_pointer, 16);
+    }
+
+    // We advance the local_pointer by sl
+    local_pointer += sl;
+
+
+    // Step 4: Path header
+
+    const scion_path_meta_hdr_t* path_meta_hdr = (const scion_path_meta_hdr_t*) local_pointer;
+
+    // We calculate the respective amount of info fields and hop fields inside of the packet 
+    packet.scion_num_info_fields = path_meta_hdr->get_num_info_fields();
+    packet.scion_num_hop_fields = path_meta_hdr->get_num_hop_fields();
+
+    local_pointer += sizeof(scion_path_meta_hdr_t);
+
+    // Step 5: Process all info fields
+    // We populate a scion_info_field_data_t array with the respective info fields we have (max. size 3)
+    // scion_info_field_data_t is a separte struct in fastnetmon_simple_packet.hpp compared to the scion_info_field_t insdie network_data_structures.hpp
+
+    for(uint8_t i = 0; i < packet.scion_num_info_fields; i++){
+        // Return error if the end_pointer is shorter then the next scion info field header
+        if (local_pointer + sizeof(scion_info_field_t) > end_pointer) {
+            return parser_code_t::memory_violation;
+        }
+        const scion_info_field_t* scion_info = (const scion_info_field_t*) local_pointer;
+
+        packet.scion_info_fields[i].timestamp = scion_info->get_timestamp_host_byte_order();
+        packet.scion_info_fields[i].SegID = scion_info->get_seg_id_host_byte_order();
+        packet.scion_info_fields[i].peering = scion_info->get_peering();
+        packet.scion_info_fields[i].ConstructionDir = scion_info->get_construction_dir();
+
+        local_pointer += sizeof(scion_info_field_t);
+    }
+
+
+    // Step 6: Process all hop fields
+    // We populate a scion_hop_field_data_t array with the respective hop fields we have (max. size 64)
+    // scion_hop_field_data_t is a separte struct in fastnetmon_simple_packet.hpp compared to the scion_hop_field_t insdie network_data_structures.hpp
+
+    for(uint8_t i = 0; i < packet.scion_num_hop_fields; i++){
+        // Return error if the end_pointer is shorter then the next scion hop field header
+        if (local_pointer + sizeof(scion_hop_field_t) > end_pointer) {
+            return parser_code_t::memory_violation;
+        }
+        const scion_hop_field_t* scion_hop = (const scion_hop_field_t*) local_pointer;
+
+        packet.scion_hop_fields[i].CI = scion_hop->get_ConsIngress_host_byte_order();
+        packet.scion_hop_fields[i].CE = scion_hop->get_ConsEgress_host_byte_order();
+        packet.scion_hop_fields[i].Exptime = scion_hop->get_ExpTime();
+
+        local_pointer += sizeof(scion_hop_field_t);
+    }
+
+    // Step 7: Advance the local_pointer to the end of the SCION packet (so it starts at the Payload)
+    // We simply use HdrLen for that (which is part of the SCION Common Header)
+    local_pointer = scion_start + scion_hdr->get_header_length_bytes();
+    if(local_pointer > end_pointer){
+        return parser_code_t::memory_violation;
+    }
+
+    return parser_code_t::success;
+
+}    
+
+
+
+
 // Our own native function to convert wire packet into simple_packet_t
 parser_code_t parse_raw_packet_to_simple_packet_full_ng(const uint8_t* pointer,
                                                         int length_before_sampling,
@@ -276,6 +432,15 @@ parser_code_t parse_raw_packet_to_simple_packet_full_ng(const uint8_t* pointer,
         packet.flags = tcp_header->get_fin() * 0x01 + tcp_header->get_syn() * 0x02 + tcp_header->get_rst() * 0x04 +
                        tcp_header->get_psh() * 0x08 + tcp_header->get_ack() * 0x10 + tcp_header->get_urg() * 0x20;
 
+        ////////////////////////////////////////////////////////////////////
+        // TRY TO RUN THE SCION PARSER AFTER A TCP HEADER PARSING HERE:
+        local_pointer += sizeof(tcp_header_t);
+
+        if (local_pointer < end_pointer) {
+            return parse_scion_packet(local_pointer, end_pointer, packet, parser_options);
+        }
+        ///////////////////////////////////////////////////////////////////////
+
     } else if (protocol == IpProtocolNumberUDP) {
         if (local_pointer + sizeof(udp_header_t) > end_pointer) {
             return parser_code_t::memory_violation;
@@ -285,6 +450,15 @@ parser_code_t parse_raw_packet_to_simple_packet_full_ng(const uint8_t* pointer,
 
         packet.source_port      = udp_header->get_source_port_host_byte_order();
         packet.destination_port = udp_header->get_destination_port_host_byte_order();
+
+        ////////////////////////////////////////////////////////////////////
+        // TRY TO RUN THE SCION PARSER AFTER A UDP HEADER PARSING HERE:
+        local_pointer += sizeof(udp_header_t);
+
+        if (local_pointer < end_pointer) {
+            return parse_scion_packet(local_pointer, end_pointer, packet, parser_options);
+        }
+        ///////////////////////////////////////////////////////////////////////
 
         // GTPv1 T-PDU packet which carries IPv4 or IPv6 as UDP payload
         // Standard requires that only destination port is set to gtp_port but in all pcaps I've seen we have gtp_port
@@ -391,7 +565,7 @@ parser_code_t parse_raw_packet_to_simple_packet_full_ng(const uint8_t* pointer,
                 return nested_packet_parse_result;
             }
         }
-
+        
     } else if (protocol == IpProtocolNumberGRE) {
         if (!parser_options.unpack_gre) {
             // We do not decode it automatically but we can report source and destination IPs for it to FNM processing
@@ -526,6 +700,15 @@ parser_code_t parse_raw_ipv4_packet_to_simple_packet_full_ng(const uint8_t* poin
         packet.flags = tcp_header->get_fin() * 0x01 + tcp_header->get_syn() * 0x02 + tcp_header->get_rst() * 0x04 +
                        tcp_header->get_psh() * 0x08 + tcp_header->get_ack() * 0x10 + tcp_header->get_urg() * 0x20;
 
+        ////////////////////////////////////////////////////////////////////
+        // TRY TO RUN THE SCION PARSER AFTER A TCP HEADER PARSING HERE:
+        local_pointer += sizeof(tcp_header_t);
+
+        if (local_pointer < end_pointer) {
+            return parse_scion_packet(local_pointer, end_pointer, packet, parser_options);
+        }
+        ///////////////////////////////////////////////////////////////////////
+
     } else if (protocol == IpProtocolNumberUDP) {
         if (local_pointer + sizeof(udp_header_t) > end_pointer) {
             return parser_code_t::memory_violation;
@@ -535,6 +718,16 @@ parser_code_t parse_raw_ipv4_packet_to_simple_packet_full_ng(const uint8_t* poin
 
         packet.source_port      = udp_header->get_source_port_host_byte_order();
         packet.destination_port = udp_header->get_destination_port_host_byte_order();
+
+        ////////////////////////////////////////////////////////////////////
+        // TRY TO RUN THE SCION PARSER AFTER A UDP HEADER PARSING HERE:
+        local_pointer += sizeof(udp_header_t);
+
+        if (local_pointer < end_pointer) {
+            return parse_scion_packet(local_pointer, end_pointer, packet, parser_options);
+        }
+        ///////////////////////////////////////////////////////////////////////
+
     } else {
         // That's fine, it's not some known protocol but we can export basic information retrieved from IP packet
         return parser_code_t::success;
@@ -542,3 +735,5 @@ parser_code_t parse_raw_ipv4_packet_to_simple_packet_full_ng(const uint8_t* poin
 
     return parser_code_t::success;
 }
+
+                                                   

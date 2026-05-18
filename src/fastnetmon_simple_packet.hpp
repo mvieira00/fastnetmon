@@ -21,6 +21,21 @@ enum source_t { UNKNOWN = 0, MIRROR = 1, SFLOW = 2, NETFLOW = 3, TERAFLOW = 4 };
 // Netflow v9: https://www.cisco.com/en/US/technologies/tk648/tk362/technologies_white_paper09186a00800a3db9.html
 enum class forwarding_status_t { unknown, forwarded, dropped, consumed };
 
+// SCION structs in simple_packet_t:
+// These structs are there to save the respective info from the info fields and hop fields inside of simple_packet_t
+struct scion_info_field_data_t {
+    uint32_t timestamp = 0;
+    uint16_t SegID = 0;
+    bool peering = false;
+    bool ConstructionDir = false;
+};
+
+struct scion_hop_field_data_t {
+    uint16_t CI = 0;
+    uint16_t CE = 0;
+    uint8_t Exptime = 0;
+};
+
 // Our internal representation of all packet types
 class simple_packet_t {
     public:
@@ -115,4 +130,46 @@ class simple_packet_t {
 
     // IP address of device which send this flow
     uint32_t agent_ip_address = 0;
+
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // SCION FIELDS ADDED HERE:
+    
+    // is this packet a scion packet
+    bool is_scion = false;
+    uint32_t scion_flow_id = 0;
+    // Fow now NextHdr should be checked for value 17 (SCION over UDP header)
+    uint8_t scion_next_hdr = 0;
+    // PathType (but this should be simply 1 for now, as scion)  Maybe ask if that is correct, to be sure
+    uint8_t scion_path_type = 1;
+
+    // ISD-AS identifiers extracted from SCION address header
+    uint16_t scion_src_isd = 0;
+    uint16_t scion_dst_isd = 0;
+    uint64_t scion_src_as = 0;
+    uint64_t scion_dst_as = 0;
+
+    // ipv4 host addresses
+    uint32_t scion_dst_host_adr_ipv4 = 0;
+    uint32_t scion_src_host_adr_ipv4 = 0;
+
+    // ipv6 host addresses
+    in6_addr scion_dst_host_adr_ipv6{};
+    in6_addr scion_src_host_adr_ipv6{};
+
+
+    // PATH info:
+    // how many info fields and hop fields do we have
+    uint8_t scion_num_info_fields = 0;
+    uint8_t scion_num_hop_fields = 0;
+
+    // place to store the respective infofields (max. 3 since we do not know the exact number of info fields)
+    scion_info_field_data_t scion_info_fields[3];
+
+    // place to store the respective hop fields (max. 64 since we do not know the exact number of hop fields)
+    scion_hop_field_data_t scion_hop_fields[64];
+
+
+
 };

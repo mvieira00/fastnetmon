@@ -15,6 +15,11 @@ class parser_options_t {
     bool unpack_gtp_v1 = false;
 };
 
+// Added the parse_scion_packet to the .hpp file
+network_data_stuctures::parser_code_t parse_scion_packet(const uint8_t* local_pointer, const uint8_t* end_pointer, simple_packet_t& packet, const parser_options_t& parser_options);
+                                                                                       
+
+
 network_data_stuctures::parser_code_t parse_raw_packet_to_simple_packet_full_ng(const uint8_t* pointer,
                                                                                 int length_before_sampling,
                                                                                 int captured_length,
@@ -27,3 +32,4 @@ network_data_stuctures::parser_code_t parse_raw_ipv4_packet_to_simple_packet_ful
                                                                                      int captured_length,
                                                                                      simple_packet_t& packet,
                                                                                      const parser_options_t& parser_options);
+
