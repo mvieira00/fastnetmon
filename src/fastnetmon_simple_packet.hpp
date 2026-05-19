@@ -142,6 +142,8 @@ class simple_packet_t {
     uint32_t scion_flow_id = 0;
     // Fow now NextHdr should be checked for value 17 (SCION over UDP header)
     uint8_t scion_next_hdr = 0;
+    uint8_t scion_hdr_len = 0;
+    uint8_t scion_payload_len = 0;
     // PathType (but this should be simply 1 for now, as scion)  Maybe ask if that is correct, to be sure
     uint8_t scion_path_type = 1;
 
