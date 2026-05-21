@@ -20,6 +20,10 @@ std::string parser_code_to_string(parser_code_t code) {
         return "unknown_ethertype";
     } else if (code == parser_code_t::arp) {
         return "arp";
+    } else if (code == parser_code_t::not_SCION_version_0) {
+        return "SCION Version is not 0";
+    } else if (code == parser_code_t::SCION_no_recognized_IPv_version) {
+        return "Only IPv4 or IPv6 considered in SCION packets";
     } else {
         return "unknown";
     }

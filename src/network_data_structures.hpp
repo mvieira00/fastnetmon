@@ -1472,7 +1472,10 @@ enum class parser_code_t {
     no_ipv6_options_support,
     unknown_ethertype,
     arp,
-    too_many_nested_vlans
+    too_many_nested_vlans,
+    // SCION parse_code_t additions
+    not_SCION_version_0, 
+    SCION_no_recognized_IPv_version
 };
 
 

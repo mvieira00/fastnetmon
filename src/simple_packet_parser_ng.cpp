@@ -49,7 +49,7 @@ parser_code_t parse_scion_packet(const uint8_t* local_pointer, const uint8_t* en
     // In case we do not have version 0 SCION packet we just return (could be also treated as a memory violation tbh?)
     packet.scion_version = scion_hdr->get_version();
     if(packet.scion_version != 0){
-        return parser_code_t::success;
+        return parser_code_t::not_SCION_version_0;
     }
     
     // we mark the packet as a SCION packet (potentially usefull later) and we save the PathType inside the packet
@@ -109,6 +109,8 @@ parser_code_t parse_scion_packet(const uint8_t* local_pointer, const uint8_t* en
         memcpy(&packet.scion_dst_host_adr_ipv4, local_pointer, 4);
     } else if (dl == 16) {
         memcpy(&packet.scion_dst_host_adr_ipv6.s6_addr, local_pointer, 16);
+    } else{
+        return parser_code_t::SCION_no_recognized_IPv_version;
     }
 
     // We advance the local_pointer by dl
@@ -120,6 +122,8 @@ parser_code_t parse_scion_packet(const uint8_t* local_pointer, const uint8_t* en
     }
     else if(sl == 16){
         memcpy(&packet.scion_src_host_adr_ipv6.s6_addr, local_pointer, 16);
+    } else{
+        return parser_code_t::SCION_no_recognized_IPv_version;
     }
 
     // We advance the local_pointer by sl
@@ -176,13 +180,14 @@ parser_code_t parse_scion_packet(const uint8_t* local_pointer, const uint8_t* en
     // We populate a scion_hop_field_data_t array with the respective hop fields we have (max. size 64)
     // scion_hop_field_data_t is a separte struct in fastnetmon_simple_packet.hpp compared to the scion_hop_field_t insdie network_data_structures.hpp
     
-    
     // Before the hop field loop, verify if all hop fields before reaching the end of the packet
     if (local_pointer + (packet.scion_num_hop_fields * hop_field_size) > end_pointer) {
         std::cout << "[debug] 2 " << std::endl;
         return parser_code_t::memory_violation;
     }
-    for(uint8_t i = 0; i < packet.scion_num_hop_fields; i++){
+    
+    // original version with simple scion_hop_fields[64] array
+    /*for(uint8_t i = 0; i < packet.scion_num_hop_fields; i++){
 
         const scion_hop_field_t* scion_hop = (const scion_hop_field_t*) local_pointer;
 
@@ -190,6 +195,22 @@ parser_code_t parse_scion_packet(const uint8_t* local_pointer, const uint8_t* en
         packet.scion_hop_fields[i].CE = scion_hop->get_ConsEgress_host_byte_order();
         packet.scion_hop_fields[i].Exptime = scion_hop->get_ExpTime();
 
+        local_pointer += hop_field_size;
+    }*/
+
+    // We reserve space in the vector for all the hop fields we have and subsequently populate it accordingly
+    packet.scion_hop_fields.reserve(packet.scion_num_hop_fields);
+
+    for (uint8_t i = 0; i < packet.scion_num_hop_fields; i++) {
+
+        const scion_hop_field_t* scion_hop = (const scion_hop_field_t*)local_pointer;
+
+        scion_hop_field_data_t hop;
+        hop.CI      = scion_hop->get_ConsIngress_host_byte_order();
+        hop.CE      = scion_hop->get_ConsEgress_host_byte_order();
+        hop.Exptime = scion_hop->get_ExpTime();
+
+        packet.scion_hop_fields.push_back(hop);
         local_pointer += hop_field_size;
     }
 

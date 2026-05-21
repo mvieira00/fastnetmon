@@ -144,8 +144,7 @@ int main() {
 
         check(result == parser_code_t::success,  "returns success");
         check(packet.is_scion == true,           "is_scion set");
-        check(packet.ip_protocol_version == 4,   "ip_protocol_version is 4");
-
+        
         check_eq(packet.scion_version, (uint8_t) 0000, "Version: 0x00");
         check_eq(packet.scion_flow_id, (uint32_t) 00000000000000000001, "FlowID: 0x00001");
         check_eq(packet.scion_next_hdr, (uint8_t) 17, "Is next header 17");

@@ -171,7 +171,9 @@ class simple_packet_t {
     scion_info_field_data_t scion_info_fields[3];
 
     // place to store the respective hop fields (max. 64 since we do not know the exact number of hop fields)
-    scion_hop_field_data_t scion_hop_fields[64];
+    //scion_hop_field_data_t scion_hop_fields[64];
+    // Instead of having a fixed size of max. scion_hop_fields[64], we will allocate the needed space for the hopfields at runtime via a vector
+    std::vector<scion_hop_field_data_t>  scion_hop_fields;
 
 
 
